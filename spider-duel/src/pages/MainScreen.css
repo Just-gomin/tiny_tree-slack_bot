@@ -1,0 +1,90 @@
+.main-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  padding-bottom: 80px; /* Space for navbar */
+}
+
+.main-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.profile-icon {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  cursor: pointer;
+}
+
+.profile-summary {
+  display: flex;
+  flex-direction: column;
+}
+
+.nickname {
+  font-weight: bold;
+  font-size: 1rem;
+}
+
+.level-badge {
+  font-size: 0.8rem;
+  color: var(--secondary-color);
+  background: rgba(255, 255, 255, 0.2);
+  padding: 2px 6px;
+  border-radius: 10px;
+  width: fit-content;
+}
+
+.avatar-circle {
+  width: 40px;
+  height: 40px;
+  background-color: var(--card-bg);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.settings-icon {
+  font-size: 1.5rem;
+  color: var(--color-secondary);
+  cursor: pointer;
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.logo-area {
+  margin-bottom: 60px;
+}
+
+.logo-area h1 {
+  font-size: 2.5rem;
+  color: var(--color-primary);
+  margin: 0;
+  font-weight: 800;
+  letter-spacing: -1px;
+}
+
+.logo-area p {
+  color: var(--color-secondary);
+  margin-top: 8px;
+  font-size: 1.1rem;
+}
+
+.start-btn {
+  width: 80%;
+  max-width: 300px;
+}

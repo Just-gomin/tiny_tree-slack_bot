@@ -1,0 +1,70 @@
+.ranking-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  padding-bottom: 80px;
+  background-color: var(--color-background);
+}
+
+.ranking-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.ranking-header h1 {
+  color: var(--color-primary);
+  margin-bottom: 8px;
+}
+
+.ranking-header p {
+  color: var(--color-secondary);
+  font-size: 0.9rem;
+}
+
+.ranking-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ranking-item {
+  background-color: white;
+  padding: 16px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+}
+
+.rank-number {
+  width: 40px;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--color-secondary);
+}
+
+.rank-1 .rank-number { color: #ECC94B; font-size: 1.5rem; } /* Gold */
+.rank-2 .rank-number { color: #A0AEC0; font-size: 1.4rem; } /* Silver */
+.rank-3 .rank-number { color: #ED8936; font-size: 1.3rem; } /* Bronze */
+
+.rank-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.rank-nickname {
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.rank-level {
+  font-size: 0.8rem;
+  color: var(--color-secondary);
+}
+
+.rank-score {
+  font-weight: 800;
+  color: var(--color-accent-sub);
+}
