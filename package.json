@@ -1,10 +1,10 @@
 {
   "name": "tiny_tree-slack_bot",
   "version": "0.0.1",
-  "description": "",
+  "description": "AI를 이용한 MVP 제작 프로젝트 TinyTree의 Slack Bot.",
   "author": "",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
