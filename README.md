@@ -1,3 +1,3 @@
-# MVP Maker
+# TinyTree - SlackBot
 
-앱 개발 자동화를 위한 워크 플로우 설계 프로젝트
+AI를 이용한 MVP 제작 프로젝트 TinyTree의 Slack Bot.
