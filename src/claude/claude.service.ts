@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { spawn } from 'child_process';
 import { FirebaseService } from '../firebase/firebase.service';
@@ -11,6 +11,8 @@ interface MVPResult {
 
 @Injectable()
 export class ClaudeService {
+  private readonly logger = new Logger(ClaudeService.name);
+
   constructor(
     private readonly firebaseService: FirebaseService,
     private readonly eventEmitter: EventEmitter2,
@@ -119,26 +121,80 @@ export class ClaudeService {
   }
 
   private async runClaudeCode(prompt: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      if (!process.env.CLAUDE_CODE_PATH)
-        reject(new Error('Claude Code의 경로를 찾을 수 없습니다.'));
+    if (!process.env.CLAUDE_CODE_PATH) {
+      throw new Error('Claude Code의 경로를 찾을 수 없습니다.');
+    }
 
+    const promptLength = prompt.length;
+    this.logger.log(`Claude Code 실행 시작 (프롬프트 ${promptLength}자)`);
+    this.logger.debug(`작업 디렉토리: ${process.env.TINY_TREE_PATH}`);
+
+    if (promptLength > 100000) {
+      this.logger.warn(
+        '프롬프트가 매우 큽니다. 실행 시간이 오래 걸릴 수 있습니다.',
+      );
+    }
+
+    return new Promise((resolve, reject) => {
       const claude = spawn(
         process.env.CLAUDE_CODE_PATH!,
-        ['--print', '--dangerously-skip-permissions', prompt],
+        ['--print', '--dangerously-skip-permissions'],
         {
           cwd: process.env.TINY_TREE_PATH,
+          stdio: ['pipe', 'pipe', 'pipe'],
           timeout: 30 * 60 * 1000, // 30분 타임아웃
+          env: {
+            ...process.env,
+            VSCODE_ESM_ENTRYPOINT: undefined,
+            ELECTRON_RUN_AS_NODE: undefined,
+            NODE_OPTIONS: undefined,
+          },
         },
       );
 
+      // 프롬프트를 stdin으로 전송
+      claude.stdin.write(prompt);
+      claude.stdin.end();
+
       let output = '';
+      let errorOutput = '';
+
       claude.stdout.on('data', (data) => (output += data));
-      claude.stderr.on('data', (data) => console.error(`stderr: ${data}`));
+
+      claude.stderr.on('data', (data) => {
+        const message = data.toString();
+        errorOutput += message;
+        this.logger.error(`Claude Code stderr: ${message.trim()}`);
+      });
 
       claude.on('close', (code) => {
-        if (code === 0) resolve(output);
-        else reject(new Error(`Claude Code 종료 코드: ${code}`));
+        this.logger.log(`Claude Code 종료 (코드: ${code})`);
+
+        if (code === 0) {
+          resolve(output);
+        } else {
+          const errorMessage = errorOutput.trim() || '상세 에러 메시지 없음';
+          reject(
+            new Error(
+              `Claude Code 실행 실패 (종료 코드: ${code})\n\n` +
+                `에러 출력:\n${errorMessage}`,
+            ),
+          );
+        }
+      });
+
+      claude.on('error', (error) => {
+        this.logger.error(`Claude Code 프로세스 에러: ${error.message}`);
+        reject(
+          new Error(
+            `Claude Code 프로세스 실행 실패: ${error.message}\n` +
+              `실행 경로: ${process.env.CLAUDE_CODE_PATH}\n` +
+              `가능한 원인:\n` +
+              `- Claude Code CLI가 해당 경로에 없음\n` +
+              `- 실행 권한 없음\n` +
+              `- Claude Code가 설치되지 않음`,
+          ),
+        );
       });
     });
   }
@@ -232,15 +288,64 @@ ${projectPath}/PLAN.md와 ${projectPath}/SPEC.md를 참고하여 MVP를 구현�
   }
 
   private async buildFlutterWeb(projectPath: string): Promise<void> {
+    this.logger.log('Flutter Web 빌드 시작');
+    this.logger.debug(`프로젝트 경로: ${projectPath}`);
+
     return new Promise((resolve, reject) => {
       const flutter = spawn('flutter', ['build', 'web', '--release'], {
         cwd: projectPath,
         timeout: 10 * 60 * 1000,
+        env: {
+          ...process.env,
+          VSCODE_ESM_ENTRYPOINT: undefined,
+          ELECTRON_RUN_AS_NODE: undefined,
+          NODE_OPTIONS: undefined,
+        },
+      });
+
+      let output = '';
+      let errorOutput = '';
+
+      flutter.stdout.on('data', (data) => {
+        const message = data.toString();
+        output += message;
+        this.logger.debug(`Flutter stdout: ${message.trim()}`);
+      });
+
+      flutter.stderr.on('data', (data) => {
+        const message = data.toString();
+        errorOutput += message;
+        this.logger.warn(`Flutter stderr: ${message.trim()}`);
       });
 
       flutter.on('close', (code) => {
-        if (code === 0) resolve();
-        else reject(new Error(`Flutter 빌드 실패: ${code}`));
+        this.logger.log(`Flutter 빌드 종료 (코드: ${code})`);
+
+        if (code === 0) {
+          resolve();
+        } else {
+          const errorMessage =
+            errorOutput.trim() || output.trim() || '상세 에러 메시지 없음';
+          reject(
+            new Error(
+              `Flutter 빌드 실패 (종료 코드: ${code})\n\n` +
+                `에러 출력:\n${errorMessage}`,
+            ),
+          );
+        }
+      });
+
+      flutter.on('error', (error) => {
+        this.logger.error(`Flutter 프로세스 에러: ${error.message}`);
+        reject(
+          new Error(
+            `Flutter 프로세스 실행 실패: ${error.message}\n` +
+              `가능한 원인:\n` +
+              `- Flutter SDK가 PATH에 없음\n` +
+              `- Flutter가 설치되지 않음\n` +
+              `- 프로젝트 경로가 올바르지 않음: ${projectPath}`,
+          ),
+        );
       });
     });
   }

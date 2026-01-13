@@ -1,14 +1,23 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { App } from '@slack/bolt';
 import { ClaudeService } from '../claude/claude.service';
 import { ProgressEvent } from '../common/events/progress.event';
+import { withRetry } from '../common/utils/retry';
 
 @Injectable()
 export class SlackService implements OnModuleInit {
+  private readonly logger = new Logger(SlackService.name);
   private app: App;
+  private isReady = false;
+  private readyPromise: Promise<void>;
+  private resolveReady: () => void;
 
   constructor(private readonly claudeService: ClaudeService) {
+    this.readyPromise = new Promise((resolve) => {
+      this.resolveReady = resolve;
+    });
+
     this.app = new App({
       token: process.env.SLACK_BOT_TOKEN,
       signingSecret: process.env.SLACK_SIGNING_SECRET,
@@ -19,8 +28,28 @@ export class SlackService implements OnModuleInit {
 
   async onModuleInit() {
     this.registerHandlers();
-    await this.app.start();
-    console.log('⚡️ Slack Bot 시작됨');
+
+    try {
+      await this.app.start();
+      this.isReady = true;
+      this.resolveReady();
+      this.logger.log('⚡️ Slack Bot 시작됨');
+    } catch (error) {
+      this.logger.error('Slack Bot 시작 실패:', error);
+      throw error;
+    }
+  }
+
+  private async waitForReady(timeoutMs = 30000): Promise<void> {
+    if (this.isReady) {
+      return;
+    }
+
+    const timeout = new Promise<void>((_, reject) => {
+      setTimeout(() => reject(new Error('Slack connection timeout')), timeoutMs);
+    });
+
+    await Promise.race([this.readyPromise, timeout]);
   }
 
   private registerHandlers() {
@@ -60,9 +89,13 @@ export class SlackService implements OnModuleInit {
   }
 
   async sendProgress(channel: string, message: string) {
-    await this.app.client.chat.postMessage({
-      channel,
-      text: message,
+    await this.waitForReady();
+
+    await withRetry(async () => {
+      await this.app.client.chat.postMessage({
+        channel,
+        text: message,
+      });
     });
   }
 
@@ -75,6 +108,8 @@ export class SlackService implements OnModuleInit {
 
   // 상세한 진행 상황 전송
   async sendDetailedProgress(channel: string, phase: string, details: object) {
+    await this.waitForReady();
+
     const blocks = [
       {
         type: 'section',
@@ -92,10 +127,12 @@ export class SlackService implements OnModuleInit {
       },
     ];
 
-    await this.app.client.chat.postMessage({
-      channel,
-      blocks,
-      text: phase,
+    await withRetry(async () => {
+      await this.app.client.chat.postMessage({
+        channel,
+        blocks,
+        text: phase,
+      });
     });
   }
 

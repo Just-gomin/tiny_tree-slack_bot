@@ -62,7 +62,18 @@ export function validate(config: Record<string, unknown>) {
   });
 
   if (errors.length > 0) {
-    throw new Error(errors.toString());
+    const errorMessages = errors
+      .map((err) => {
+        const constraints = Object.values(err.constraints || {});
+        return `  - ${err.property}: ${constraints.join(', ')}`;
+      })
+      .join('\n');
+
+    throw new Error(
+      '필수 환경변수가 설정되지 않았거나 유효하지 않습니다:\n' +
+        errorMessages +
+        '\n\n.env 파일을 확인해주세요. (.env.example 참고)',
+    );
   }
 
   return validatedConfig;
