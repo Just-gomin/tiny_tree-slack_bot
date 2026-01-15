@@ -3,6 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { spawn } from 'child_process';
 import { FirebaseService } from '../firebase/firebase.service';
 import { ProgressEvent } from '../common/events/progress.event';
+import { ProcessStreamHandler } from '../common/utils/process-stream.util';
 
 interface MVPResult {
   deployUrl: string;
@@ -156,28 +157,24 @@ export class ClaudeService {
       claude.stdin.write(prompt);
       claude.stdin.end();
 
-      let output = '';
-      let errorOutput = '';
-
-      claude.stdout.on('data', (data) => (output += data));
-
-      claude.stderr.on('data', (data) => {
-        const message = data.toString();
-        errorOutput += message;
-        this.logger.error(`Claude Code stderr: ${message.trim()}`);
+      // 스트림 핸들러로 메모리 누수 방지
+      const streamHandler = new ProcessStreamHandler(this.logger, {
+        maxBufferLines: 500,
       });
+
+      claude.stdout.on('data', (data) => streamHandler.handleStdout(data));
+      claude.stderr.on('data', (data) => streamHandler.handleStderr(data));
 
       claude.on('close', (code) => {
         this.logger.log(`Claude Code 종료 (코드: ${code})`);
 
         if (code === 0) {
-          resolve(output);
+          resolve(streamHandler.getRecentOutput());
         } else {
-          const errorMessage = errorOutput.trim() || '상세 에러 메시지 없음';
           reject(
             new Error(
               `Claude Code 실행 실패 (종료 코드: ${code})\n\n` +
-                `에러 출력:\n${errorMessage}`,
+                `최근 에러:\n${streamHandler.getErrorSummary()}`,
             ),
           );
         }
@@ -303,20 +300,13 @@ ${projectPath}/PLAN.md와 ${projectPath}/SPEC.md를 참고하여 MVP를 구현�
         },
       });
 
-      let output = '';
-      let errorOutput = '';
-
-      flutter.stdout.on('data', (data) => {
-        const message = data.toString();
-        output += message;
-        this.logger.debug(`Flutter stdout: ${message.trim()}`);
+      // 스트림 핸들러로 메모리 누수 방지
+      const streamHandler = new ProcessStreamHandler(this.logger, {
+        maxBufferLines: 300,
       });
 
-      flutter.stderr.on('data', (data) => {
-        const message = data.toString();
-        errorOutput += message;
-        this.logger.warn(`Flutter stderr: ${message.trim()}`);
-      });
+      flutter.stdout.on('data', (data) => streamHandler.handleStdout(data));
+      flutter.stderr.on('data', (data) => streamHandler.handleStderr(data));
 
       flutter.on('close', (code) => {
         this.logger.log(`Flutter 빌드 종료 (코드: ${code})`);
@@ -324,12 +314,10 @@ ${projectPath}/PLAN.md와 ${projectPath}/SPEC.md를 참고하여 MVP를 구현�
         if (code === 0) {
           resolve();
         } else {
-          const errorMessage =
-            errorOutput.trim() || output.trim() || '상세 에러 메시지 없음';
           reject(
             new Error(
               `Flutter 빌드 실패 (종료 코드: ${code})\n\n` +
-                `에러 출력:\n${errorMessage}`,
+                `최근 에러:\n${streamHandler.getErrorSummary()}`,
             ),
           );
         }

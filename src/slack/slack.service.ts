@@ -12,6 +12,8 @@ export class SlackService implements OnModuleInit {
   private isReady = false;
   private readyPromise: Promise<void>;
   private resolveReady: () => void;
+  // 사용자별 활성 요청 추적 (동시 요청 방지)
+  private activeRequests = new Map<string, boolean>();
 
   constructor(private readonly claudeService: ClaudeService) {
     this.readyPromise = new Promise((resolve) => {
@@ -46,7 +48,10 @@ export class SlackService implements OnModuleInit {
     }
 
     const timeout = new Promise<void>((_, reject) => {
-      setTimeout(() => reject(new Error('Slack connection timeout')), timeoutMs);
+      setTimeout(
+        () => reject(new Error('Slack connection timeout')),
+        timeoutMs,
+      );
     });
 
     await Promise.race([this.readyPromise, timeout]);
@@ -56,8 +61,18 @@ export class SlackService implements OnModuleInit {
     // MVP 생성 명령어
     this.app.command('/mvp', async ({ command, ack, say }) => {
       await ack();
+
+      const userId = command.user_id;
       const idea = command.text;
 
+      // 동시 요청 체크
+      if (this.activeRequests.get(userId)) {
+        await say('⚠️ 이미 MVP 생성 중입니다. 완료될 때까지 기다려주세요.');
+        return;
+      }
+
+      // 요청 시작
+      this.activeRequests.set(userId, true);
       await say(`🌱 MVP 생성을 시작합니다: "${idea}"`);
 
       try {
@@ -67,7 +82,12 @@ export class SlackService implements OnModuleInit {
         );
         await say(`✅ 배포 완료!\n🔗 ${result.deployUrl}`);
       } catch (error) {
-        await say(`❌ 오류 발생: ${error.message}`);
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        await say(`❌ 오류 발생: ${errorMessage}`);
+      } finally {
+        // 요청 완료 (반드시 정리)
+        this.activeRequests.delete(userId);
       }
     });
 
