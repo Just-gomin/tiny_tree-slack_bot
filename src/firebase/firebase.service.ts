@@ -77,7 +77,7 @@ export class FirebaseService {
             reject(
               new Error(
                 `Firebase 사이트 생성 실패 (종료 코드: ${code})\n\n` +
-                  `에러: ${errorSummary}`,
+                `에러: ${errorSummary}`,
               ),
             );
             return;
@@ -117,7 +117,7 @@ export class FirebaseService {
             reject(
               new Error(
                 `Firebase 배포 실패 (종료 코드: ${code})\n\n` +
-                  `에러: ${deployHandler.getErrorSummary()}`,
+                `에러: ${deployHandler.getErrorSummary()}`,
               ),
             );
           }
@@ -128,9 +128,9 @@ export class FirebaseService {
           reject(
             new Error(
               `Firebase 배포 프로세스 실행 실패: ${error.message}\n` +
-                `가능한 원인:\n` +
-                `- Firebase CLI가 설치되지 않음\n` +
-                `- Firebase 인증 실패`,
+              `가능한 원인:\n` +
+              `- Firebase CLI가 설치되지 않음\n` +
+              `- Firebase 인증 실패`,
             ),
           );
         });
@@ -143,9 +143,9 @@ export class FirebaseService {
         reject(
           new Error(
             `Firebase 사이트 생성 프로세스 실행 실패: ${error.message}\n` +
-              `가능한 원인:\n` +
-              `- Firebase CLI가 설치되지 않음\n` +
-              `- Firebase 인증 실패`,
+            `가능한 원인:\n` +
+            `- Firebase CLI가 설치되지 않음\n` +
+            `- Firebase 인증 실패`,
           ),
         );
       });

@@ -93,17 +93,30 @@ export class SlackService implements OnModuleInit {
 
     // 기획서 파일 업로드 처리
     this.app.event('file_shared', async ({ event, client }) => {
-      const file = await client.files.info({ file: event.file_id });
-      if (
-        file.file?.mimetype === 'text/markdown' ||
-        file.file?.name?.endsWith('.md')
-      ) {
-        if (!file.file.url_private) {
-          throw Error();
-        }
+      const userId = event.user_id;
 
-        const content = await this.downloadFile(file.file.url_private);
-        await this.claudeService.generateMVPFromSpec(content, event.channel_id);
+      if (this.activeRequests.get(userId)) {
+        await this.sendProgress(event.channel_id, '⚠️ 이미 MVP 생성 중입니다.');
+        return;
+      }
+
+      this.activeRequests.set(userId, true);
+
+      try {
+        const file = await client.files.info({ file: event.file_id });
+        if (
+          file.file?.mimetype === 'text/markdown' ||
+          file.file?.name?.endsWith('.md')
+        ) {
+          if (!file.file.url_private) {
+            throw Error('파일 다운로드 URL을 가져올 수 없습니다');
+          }
+
+          const content = await this.downloadFile(file.file.url_private);
+          await this.claudeService.generateMVPFromSpec(content, event.channel_id);
+        }
+      } finally {
+        this.activeRequests.delete(userId);
       }
     });
   }
