@@ -14,6 +14,8 @@ export class SlackService implements OnModuleInit {
   private resolveReady: () => void;
   // 사용자별 활성 요청 추적 (동시 요청 방지)
   private activeRequests = new Map<string, boolean>();
+  // 요청별 스레드 타임스탬프 저장
+  private threadTimestamps = new Map<string, string>();
 
   constructor(private readonly claudeService: ClaudeService) {
     this.readyPromise = new Promise((resolve) => {
@@ -64,6 +66,7 @@ export class SlackService implements OnModuleInit {
 
       const userId = command.user_id;
       const idea = command.text;
+      const requestId = this.generateRequestId(userId);
 
       // 동시 요청 체크
       if (this.activeRequests.get(userId)) {
@@ -73,27 +76,43 @@ export class SlackService implements OnModuleInit {
 
       // 요청 시작
       this.activeRequests.set(userId, true);
-      await say(`🌱 MVP 생성을 시작합니다: "${idea}"`);
+
+      // 초기 메시지 전송 및 thread_ts 저장
+      const response = await say(`🌱 MVP 생성을 시작합니다: "${idea}"`);
+      if (response.ts) {
+        this.threadTimestamps.set(requestId, response.ts);
+      }
 
       try {
         const result = await this.claudeService.generateMVP(
           idea,
           command.channel_id,
+          requestId,
         );
-        await say(`✅ 배포 완료!\n🔗 ${result.deployUrl}`);
+        await this.sendProgressToThread(
+          command.channel_id,
+          `✅ 배포 완료!\n🔗 ${result.deployUrl}`,
+          requestId,
+        );
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
-        await say(`❌ 오류 발생: ${errorMessage}`);
+        await this.sendProgressToThread(
+          command.channel_id,
+          `❌ 오류 발생: ${errorMessage}`,
+          requestId,
+        );
       } finally {
         // 요청 완료 (반드시 정리)
         this.activeRequests.delete(userId);
+        this.cleanupThread(requestId);
       }
     });
 
     // 기획서 파일 업로드 처리
     this.app.event('file_shared', async ({ event, client }) => {
       const userId = event.user_id;
+      const requestId = this.generateRequestId(userId);
 
       if (this.activeRequests.get(userId)) {
         await this.sendProgress(event.channel_id, '⚠️ 이미 MVP 생성 중입니다.');
@@ -112,11 +131,25 @@ export class SlackService implements OnModuleInit {
             throw Error('파일 다운로드 URL을 가져올 수 없습니다');
           }
 
+          // 초기 메시지 전송 및 thread_ts 저장
+          const response = await this.app.client.chat.postMessage({
+            channel: event.channel_id,
+            text: '📄 기획서 기반 MVP 생성을 시작합니다',
+          });
+          if (response.ts) {
+            this.threadTimestamps.set(requestId, response.ts);
+          }
+
           const content = await this.downloadFile(file.file.url_private);
-          await this.claudeService.generateMVPFromSpec(content, event.channel_id);
+          await this.claudeService.generateMVPFromSpec(
+            content,
+            event.channel_id,
+            requestId,
+          );
         }
       } finally {
         this.activeRequests.delete(userId);
+        this.cleanupThread(requestId);
       }
     });
   }
@@ -139,8 +172,47 @@ export class SlackService implements OnModuleInit {
     return response.text();
   }
 
-  // 상세한 진행 상황 전송
-  async sendDetailedProgress(channel: string, phase: string, details: object) {
+  // 요청 ID 생성 헬퍼
+  private generateRequestId(userId: string): string {
+    return `${userId}_${Date.now()}`;
+  }
+
+  // 스레드 정리 메서드
+  private cleanupThread(requestId: string): void {
+    this.threadTimestamps.delete(requestId);
+  }
+
+  // 스레드로 메시지 전송
+  private async sendProgressToThread(
+    channel: string,
+    message: string,
+    requestId: string,
+  ): Promise<void> {
+    await this.waitForReady();
+
+    const threadTs = this.threadTimestamps.get(requestId);
+
+    await withRetry(async () => {
+      const response = await this.app.client.chat.postMessage({
+        channel,
+        text: message,
+        thread_ts: threadTs,
+      });
+
+      // 첫 메시지인 경우 (threadTs가 없었던 경우) thread_ts 저장
+      if (!threadTs && response.ts) {
+        this.threadTimestamps.set(requestId, response.ts);
+      }
+    });
+  }
+
+  // 상세한 진행 상황 전송 (스레드로)
+  private async sendDetailedProgressToThread(
+    channel: string,
+    phase: string,
+    details: object,
+    threadTs?: string,
+  ) {
     await this.waitForReady();
 
     const blocks = [
@@ -165,20 +237,32 @@ export class SlackService implements OnModuleInit {
         channel,
         blocks,
         text: phase,
+        thread_ts: threadTs,
       });
     });
+  }
+
+  // 상세한 진행 상황 전송 (하위 호환성을 위해 유지)
+  async sendDetailedProgress(channel: string, phase: string, details: object) {
+    await this.sendDetailedProgressToThread(channel, phase, details, undefined);
   }
 
   // 진행 상황 이벤트 리스너
   @OnEvent('progress.send')
   async handleProgressEvent(event: ProgressEvent) {
-    await this.sendProgress(event.channelId, event.message);
+    await this.sendProgressToThread(
+      event.channelId,
+      event.message,
+      event.requestId,
+    );
 
     if (event.details && event.phase) {
-      await this.sendDetailedProgress(
+      const threadTs = this.threadTimestamps.get(event.requestId);
+      await this.sendDetailedProgressToThread(
         event.channelId,
         event.phase,
         event.details,
+        threadTs,
       );
     }
   }

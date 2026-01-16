@@ -3,7 +3,7 @@ import { SlackService } from '../../slack/slack.service';
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
-  constructor(private readonly slackService: SlackService) {}
+  constructor(private readonly slackService: SlackService) { }
 
   async catch(exception: unknown, host: ArgumentsHost) {
     const errorMessage =

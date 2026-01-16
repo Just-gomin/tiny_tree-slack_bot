@@ -17,37 +17,41 @@ export class ClaudeService {
   constructor(
     private readonly firebaseService: FirebaseService,
     private readonly eventEmitter: EventEmitter2,
-  ) { }
+  ) {}
 
-  async generateMVP(idea: string, channelId: string): Promise<MVPResult> {
+  async generateMVP(
+    idea: string,
+    channelId: string,
+    requestId: string,
+  ): Promise<MVPResult> {
     const projectName = this.generateProjectName(idea);
     const projectPath = `${process.env.TINY_TREE_PATH}/apps/${projectName}`;
 
     // Phase 1: 설계
     this.eventEmitter.emit(
       'progress.send',
-      new ProgressEvent(channelId, '📋 구현 계획 설계 중...'),
+      new ProgressEvent(channelId, '📋 구현 계획 설계 중...', requestId),
     );
     await this.runClaudeCode(this.buildDesignPrompt(idea, projectPath));
 
     // Phase 2: 구현
     this.eventEmitter.emit(
       'progress.send',
-      new ProgressEvent(channelId, '🔨 MVP 구현 중...'),
+      new ProgressEvent(channelId, '🔨 MVP 구현 중...', requestId),
     );
     await this.runClaudeCode(this.buildImplementPrompt(projectPath));
 
     // Phase 3: 빌드
     this.eventEmitter.emit(
       'progress.send',
-      new ProgressEvent(channelId, '📦 Flutter Web 빌드 중...'),
+      new ProgressEvent(channelId, '📦 Flutter Web 빌드 중...', requestId),
     );
     await this.buildFlutterWeb(projectPath);
 
     // Phase 4: 배포
     this.eventEmitter.emit(
       'progress.send',
-      new ProgressEvent(channelId, '🚀 Firebase 배포 중...'),
+      new ProgressEvent(channelId, '🚀 Firebase 배포 중...', requestId),
     );
     const deployUrl = await this.firebaseService.deploy(
       projectPath,
@@ -65,6 +69,7 @@ export class ClaudeService {
   async generateMVPFromSpec(
     specContent: string,
     channelId: string,
+    requestId: string,
   ): Promise<MVPResult> {
     // 기획서에서 프로젝트명 추출 (첫 번째 # 헤더 사용)
     const projectNameMatch = specContent.match(/^#\s+(.+)$/m);
@@ -77,13 +82,14 @@ export class ClaudeService {
       new ProgressEvent(
         channelId,
         `📄 기획서 기반 MVP 생성 시작: "${projectTitle}"`,
+        requestId,
       ),
     );
 
     // Phase 1: 기획서 저장 및 분석
     this.eventEmitter.emit(
       'progress.send',
-      new ProgressEvent(channelId, '📋 기획서 분석 중...'),
+      new ProgressEvent(channelId, '📋 기획서 분석 중...', requestId),
     );
     await this.runClaudeCode(
       this.buildSpecAnalysisPrompt(specContent, projectPath),
@@ -92,21 +98,21 @@ export class ClaudeService {
     // Phase 2: 구현
     this.eventEmitter.emit(
       'progress.send',
-      new ProgressEvent(channelId, '🔨 MVP 구현 중...'),
+      new ProgressEvent(channelId, '🔨 MVP 구현 중...', requestId),
     );
     await this.runClaudeCode(this.buildImplementFromSpecPrompt(projectPath));
 
     // Phase 3: 빌드
     this.eventEmitter.emit(
       'progress.send',
-      new ProgressEvent(channelId, '📦 Flutter Web 빌드 중...'),
+      new ProgressEvent(channelId, '📦 Flutter Web 빌드 중...', requestId),
     );
     await this.buildFlutterWeb(projectPath);
 
     // Phase 4: 배포
     this.eventEmitter.emit(
       'progress.send',
-      new ProgressEvent(channelId, '🚀 Firebase 배포 중...'),
+      new ProgressEvent(channelId, '🚀 Firebase 배포 중...', requestId),
     );
     const deployUrl = await this.firebaseService.deploy(
       projectPath,
@@ -115,7 +121,7 @@ export class ClaudeService {
 
     this.eventEmitter.emit(
       'progress.send',
-      new ProgressEvent(channelId, `✅ 배포 완료!\n🔗 ${deployUrl}`),
+      new ProgressEvent(channelId, `✅ 배포 완료!\n🔗 ${deployUrl}`, requestId),
     );
 
     return { deployUrl, projectPath };
@@ -144,8 +150,7 @@ export class ClaudeService {
           cwd: process.env.TINY_TREE_PATH,
           stdio: ['pipe', 'pipe', 'pipe'],
           timeout: 30 * 60 * 1000, // 30분 타임아웃
-          env:
-          {
+          env: {
             PATH: process.env.PATH,
             HOME: process.env.HOME,
             TINY_TREE_PATH: process.env.TINY_TREE_PATH,
@@ -163,8 +168,12 @@ export class ClaudeService {
         maxBufferLines: 500,
       });
 
-      claude.stdout.on('data', (data) => streamHandler.handleStdout(data));
-      claude.stderr.on('data', (data) => streamHandler.handleStderr(data));
+      claude.stdout.on('data', (data: Buffer<ArrayBufferLike>) =>
+        streamHandler.handleStdout(data),
+      );
+      claude.stderr.on('data', (data: Buffer<ArrayBufferLike>) =>
+        streamHandler.handleStderr(data),
+      );
 
       claude.on('close', (code) => {
         this.logger.log(`Claude Code 종료 (코드: ${code})`);
@@ -175,7 +184,7 @@ export class ClaudeService {
           reject(
             new Error(
               `Claude Code 실행 실패 (종료 코드: ${code})\n\n` +
-              `최근 에러:\n${streamHandler.getErrorSummary()}`,
+                `최근 에러:\n${streamHandler.getErrorSummary()}`,
             ),
           );
         }
@@ -186,11 +195,11 @@ export class ClaudeService {
         reject(
           new Error(
             `Claude Code 프로세스 실행 실패: ${error.message}\n` +
-            `실행 경로: ${process.env.CLAUDE_CODE_PATH}\n` +
-            `가능한 원인:\n` +
-            `- Claude Code CLI가 해당 경로에 없음\n` +
-            `- 실행 권한 없음\n` +
-            `- Claude Code가 설치되지 않음`,
+              `실행 경로: ${process.env.CLAUDE_CODE_PATH}\n` +
+              `가능한 원인:\n` +
+              `- Claude Code CLI가 해당 경로에 없음\n` +
+              `- 실행 권한 없음\n` +
+              `- Claude Code가 설치되지 않음`,
           ),
         );
       });
@@ -306,8 +315,12 @@ ${projectPath}/PLAN.md와 ${projectPath}/SPEC.md를 참고하여 MVP를 구현�
         maxBufferLines: 300,
       });
 
-      flutter.stdout.on('data', (data) => streamHandler.handleStdout(data));
-      flutter.stderr.on('data', (data) => streamHandler.handleStderr(data));
+      flutter.stdout.on('data', (data: Buffer<ArrayBufferLike>) =>
+        streamHandler.handleStdout(data),
+      );
+      flutter.stderr.on('data', (data: Buffer<ArrayBufferLike>) =>
+        streamHandler.handleStderr(data),
+      );
 
       flutter.on('close', (code) => {
         this.logger.log(`Flutter 빌드 종료 (코드: ${code})`);
@@ -318,7 +331,7 @@ ${projectPath}/PLAN.md와 ${projectPath}/SPEC.md를 참고하여 MVP를 구현�
           reject(
             new Error(
               `Flutter 빌드 실패 (종료 코드: ${code})\n\n` +
-              `최근 에러:\n${streamHandler.getErrorSummary()}`,
+                `최근 에러:\n${streamHandler.getErrorSummary()}`,
             ),
           );
         }
@@ -329,10 +342,10 @@ ${projectPath}/PLAN.md와 ${projectPath}/SPEC.md를 참고하여 MVP를 구현�
         reject(
           new Error(
             `Flutter 프로세스 실행 실패: ${error.message}\n` +
-            `가능한 원인:\n` +
-            `- Flutter SDK가 PATH에 없음\n` +
-            `- Flutter가 설치되지 않음\n` +
-            `- 프로젝트 경로가 올바르지 않음: ${projectPath}`,
+              `가능한 원인:\n` +
+              `- Flutter SDK가 PATH에 없음\n` +
+              `- Flutter가 설치되지 않음\n` +
+              `- 프로젝트 경로가 올바르지 않음: ${projectPath}`,
           ),
         );
       });
