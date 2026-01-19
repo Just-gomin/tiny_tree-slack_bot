@@ -7,15 +7,19 @@ import { ProcessStreamHandler } from '../common/utils/process-stream.util';
 @Injectable()
 export class FirebaseService {
   private readonly logger = new Logger(FirebaseService.name);
+  private readonly FIREBASE_URL_PATTERN = /https:\/\/[^\s\[\]]+\.web\.app/;
 
-  async deploy(projectPath: string, siteName: string): Promise<string> {
-    // firebase.json 생성
+  async deploy(projectPath: string, channelId: string): Promise<string> {
+    // 1. firebase.json 생성
     this.createFirebaseConfig(projectPath);
 
-    // Firebase Hosting 배포
-    await this.runFirebaseDeploy(projectPath, siteName);
+    // 2. Preview Channel 배포 및 URL 반환
+    const previewUrl = await this.runPreviewChannelDeploy(
+      projectPath,
+      channelId,
+    );
 
-    return `https://${siteName}.web.app`;
+    return previewUrl;
   }
 
   private createFirebaseConfig(projectPath: string): void {
@@ -31,121 +35,84 @@ export class FirebaseService {
       path.join(projectPath, 'firebase.json'),
       JSON.stringify(config, null, 2),
     );
+    this.logger.log(`firebase.json 생성: ${projectPath}`);
   }
 
-  private async runFirebaseDeploy(
+  private async runPreviewChannelDeploy(
     projectPath: string,
-    siteName: string,
-  ): Promise<void> {
+    channelId: string,
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
       if (!process.env.FIREBASE_PROJECT_ID) {
         reject(new Error('Firebase Project ID를 찾을 수 없습니다.'));
         return;
       }
 
-      // Firebase 사이트 생성 (없으면)
-      const createSite = spawn(
+      const deploy = spawn(
         'firebase',
         [
-          'hosting:sites:create',
-          siteName,
+          'hosting:channel:deploy',
+          channelId,
+          '--expires',
+          '7d',
           '--project',
           process.env.FIREBASE_PROJECT_ID,
         ],
-        { cwd: projectPath },
+        {
+          cwd: projectPath,
+          timeout: 5 * 60 * 1000,
+        },
       );
 
-      // 사이트 생성 스트림 핸들러
-      const createSiteHandler = new ProcessStreamHandler(this.logger, {
+      const deployHandler = new ProcessStreamHandler(this.logger, {
         maxBufferLines: 200,
       });
 
-      createSite.stdout.on('data', (data) =>
-        createSiteHandler.handleStdout(data),
-      );
-      createSite.stderr.on('data', (data) =>
-        createSiteHandler.handleStderr(data),
-      );
+      let previewUrl = '';
 
-      createSite.on('close', (code) => {
-        this.logger.log(`Firebase 사이트 생성 종료 (코드: ${code})`);
-
-        // 사이트가 이미 존재하는 경우도 성공으로 처리
-        if (code !== 0) {
-          const errorSummary = createSiteHandler.getErrorSummary();
-          if (!errorSummary.includes('already exists')) {
-            reject(
-              new Error(
-                `Firebase 사이트 생성 실패 (종료 코드: ${code})\n\n` +
-                `에러: ${errorSummary}`,
-              ),
-            );
-            return;
-          }
+      deploy.stdout.on('data', (data) => {
+        deployHandler.handleStdout(data);
+        const dataString = data.toString();
+        const match = dataString.match(this.FIREBASE_URL_PATTERN);
+        if (match) {
+          previewUrl = match[0];
         }
+      });
 
-        // 배포 실행
-        const deploy = spawn(
-          'firebase',
-          [
-            'deploy',
-            '--only',
-            `hosting:${siteName}`,
-            '--project',
-            process.env.FIREBASE_PROJECT_ID!,
-          ],
-          {
-            cwd: projectPath,
-            timeout: 5 * 60 * 1000,
-          },
-        );
+      deploy.stderr.on('data', (data) => deployHandler.handleStderr(data));
 
-        // 배포 스트림 핸들러
-        const deployHandler = new ProcessStreamHandler(this.logger, {
-          maxBufferLines: 200,
-        });
+      deploy.on('close', (code) => {
+        this.logger.log(`Firebase Preview Channel 배포 종료 (코드: ${code})`);
 
-        deploy.stdout.on('data', (data) => deployHandler.handleStdout(data));
-        deploy.stderr.on('data', (data) => deployHandler.handleStderr(data));
-
-        deploy.on('close', (code) => {
-          this.logger.log(`Firebase 배포 종료 (코드: ${code})`);
-
-          if (code === 0) {
-            resolve();
-          } else {
-            reject(
-              new Error(
-                `Firebase 배포 실패 (종료 코드: ${code})\n\n` +
-                `에러: ${deployHandler.getErrorSummary()}`,
-              ),
+        if (code === 0) {
+          if (!previewUrl) {
+            this.logger.warn(
+              '배포는 성공했으나 Preview URL을 찾을 수 없습니다',
             );
+            reject(
+              new Error('Firebase 배포 성공했으나 URL을 파싱할 수 없습니다'),
+            );
+          } else {
+            resolve(previewUrl);
           }
-        });
-
-        deploy.on('error', (error) => {
-          this.logger.error(`Firebase 배포 프로세스 에러: ${error.message}`);
+        } else {
           reject(
             new Error(
-              `Firebase 배포 프로세스 실행 실패: ${error.message}\n` +
+              `Firebase Preview Channel 배포 실패 (종료 코드: ${code})\n\n` +
+                `에러: ${deployHandler.getErrorSummary()}`,
+            ),
+          );
+        }
+      });
+
+      deploy.on('error', (error) => {
+        this.logger.error(`Firebase 배포 프로세스 에러: ${error.message}`);
+        reject(
+          new Error(
+            `Firebase 배포 프로세스 실행 실패: ${error.message}\n` +
               `가능한 원인:\n` +
               `- Firebase CLI가 설치되지 않음\n` +
               `- Firebase 인증 실패`,
-            ),
-          );
-        });
-      });
-
-      createSite.on('error', (error) => {
-        this.logger.error(
-          `Firebase 사이트 생성 프로세스 에러: ${error.message}`,
-        );
-        reject(
-          new Error(
-            `Firebase 사이트 생성 프로세스 실행 실패: ${error.message}\n` +
-            `가능한 원인:\n` +
-            `- Firebase CLI가 설치되지 않음\n` +
-            `- Firebase 인증 실패`,
           ),
         );
       });
