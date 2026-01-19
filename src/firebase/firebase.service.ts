@@ -7,6 +7,7 @@ import { ProcessStreamHandler } from '../common/utils/process-stream.util';
 @Injectable()
 export class FirebaseService {
   private readonly logger = new Logger(FirebaseService.name);
+  private readonly FIREBASE_URL_PATTERN = /https:\/\/[^\s\[\]]+\.web\.app/;
 
   async deploy(projectPath: string, channelId: string): Promise<string> {
     // 1. firebase.json 생성
@@ -72,7 +73,7 @@ export class FirebaseService {
       deploy.stdout.on('data', (data) => {
         deployHandler.handleStdout(data);
         const dataString = data.toString();
-        const match = dataString.match(/https:\/\/[^\s\[\]]+\.web\.app/);
+        const match = dataString.match(this.FIREBASE_URL_PATTERN);
         if (match) {
           previewUrl = match[0];
         }
