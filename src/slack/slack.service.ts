@@ -93,7 +93,7 @@ export class SlackService implements OnModuleInit {
         );
         await this.sendProgressToThread(
           command.channel_id,
-          `✅ 배포 완료!\n🔗 ${result.deployUrl}`,
+          `✅ 배포 완료!\n🔗 ${result.deployUrl}\n프로젝트 경로: ${result.projectPath}`,
           requestId,
         );
       } catch (error) {
@@ -150,7 +150,7 @@ export class SlackService implements OnModuleInit {
           );
           await this.sendProgressToThread(
             event.channel_id,
-            `✅ 배포 완료!\n🔗 ${result.deployUrl}`,
+            `✅ 배포 완료!\n🔗 ${result.deployUrl}\n프로젝트 경로: ${result.projectPath}`,
             requestId,
           );
         }
