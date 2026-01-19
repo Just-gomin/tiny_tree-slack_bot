@@ -17,14 +17,14 @@ export class ClaudeService {
   constructor(
     private readonly firebaseService: FirebaseService,
     private readonly eventEmitter: EventEmitter2,
-  ) {}
+  ) { }
 
   async generateMVP(
     idea: string,
     channelId: string,
     requestId: string,
   ): Promise<MVPResult> {
-    const projectName = this.generateProjectName(idea);
+    const projectName = this.generateProjectName();
     const projectPath = `${process.env.TINY_TREE_PATH}/apps/${projectName}`;
 
     // Phase 1: 설계
@@ -74,7 +74,7 @@ export class ClaudeService {
     // 기획서에서 프로젝트명 추출 (첫 번째 # 헤더 사용)
     const projectNameMatch = specContent.match(/^#\s+(.+)$/m);
     const projectTitle = projectNameMatch?.[1] || 'untitled';
-    const projectName = this.generateProjectName(projectTitle);
+    const projectName = this.generateProjectName();
     const projectPath = `${process.env.TINY_TREE_PATH}/apps/${projectName}`;
 
     this.eventEmitter.emit(
@@ -151,8 +151,11 @@ export class ClaudeService {
           stdio: ['pipe', 'pipe', 'pipe'],
           timeout: 30 * 60 * 1000, // 30분 타임아웃
           env: {
-            PATH: process.env.PATH,
             HOME: process.env.HOME,
+            PATH: process.env.PATH,
+            USER: process.env.USER,
+            SHELL: process.env.SHELL,
+            LANG: process.env.LANG,
             TINY_TREE_PATH: process.env.TINY_TREE_PATH,
             FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID,
           },
@@ -184,7 +187,7 @@ export class ClaudeService {
           reject(
             new Error(
               `Claude Code 실행 실패 (종료 코드: ${code})\n\n` +
-                `최근 에러:\n${streamHandler.getErrorSummary()}`,
+              `최근 에러:\n${streamHandler.getErrorSummary()}`,
             ),
           );
         }
@@ -195,11 +198,11 @@ export class ClaudeService {
         reject(
           new Error(
             `Claude Code 프로세스 실행 실패: ${error.message}\n` +
-              `실행 경로: ${process.env.CLAUDE_CODE_PATH}\n` +
-              `가능한 원인:\n` +
-              `- Claude Code CLI가 해당 경로에 없음\n` +
-              `- 실행 권한 없음\n` +
-              `- Claude Code가 설치되지 않음`,
+            `실행 경로: ${process.env.CLAUDE_CODE_PATH}\n` +
+            `가능한 원인:\n` +
+            `- Claude Code CLI가 해당 경로에 없음\n` +
+            `- 실행 권한 없음\n` +
+            `- Claude Code가 설치되지 않음`,
           ),
         );
       });
@@ -229,6 +232,7 @@ PLAN.md 파일에 구현 계획을 작성해주세요.
 ${projectPath}/PLAN.md의 계획을 기반으로 MVP를 구현해주세요.
 
 제약사항:
+- \`flutter create .\` 명령으로 프로젝트 생성
 - Flutter Web 타겟
 - Material3 디자인
 - 반응형 레이아웃
@@ -331,7 +335,7 @@ ${projectPath}/PLAN.md와 ${projectPath}/SPEC.md를 참고하여 MVP를 구현�
           reject(
             new Error(
               `Flutter 빌드 실패 (종료 코드: ${code})\n\n` +
-                `최근 에러:\n${streamHandler.getErrorSummary()}`,
+              `최근 에러:\n${streamHandler.getErrorSummary()}`,
             ),
           );
         }
@@ -342,32 +346,18 @@ ${projectPath}/PLAN.md와 ${projectPath}/SPEC.md를 참고하여 MVP를 구현�
         reject(
           new Error(
             `Flutter 프로세스 실행 실패: ${error.message}\n` +
-              `가능한 원인:\n` +
-              `- Flutter SDK가 PATH에 없음\n` +
-              `- Flutter가 설치되지 않음\n` +
-              `- 프로젝트 경로가 올바르지 않음: ${projectPath}`,
+            `가능한 원인:\n` +
+            `- Flutter SDK가 PATH에 없음\n` +
+            `- Flutter가 설치되지 않음\n` +
+            `- 프로젝트 경로가 올바르지 않음: ${projectPath}`,
           ),
         );
       });
     });
   }
 
-  private generateProjectName(idea: string): string {
+  private generateProjectName(): string {
     const timestamp = Date.now();
-    // 더 엄격한 sanitization
-    const slug = idea
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '') // 발음 구별 기호 제거
-      .replace(/[^a-z0-9]/g, '_') // 한글 제거 (파일시스템 호환성)
-      .replace(/_{2,}/g, '_') // 연속 언더스코어 제거
-      .substring(0, 20)
-      .replace(/^_|_$/g, ''); // 앞뒤 언더스코어 제거
-
-    if (!slug) {
-      return `mvp_untitled_${timestamp}`;
-    }
-
-    return `mvp_${slug}_${timestamp}`;
+    return `tinytree${timestamp}`;
   }
 }

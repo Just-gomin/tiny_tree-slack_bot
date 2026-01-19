@@ -78,7 +78,7 @@ export class SlackService implements OnModuleInit {
       this.activeRequests.set(userId, true);
 
       // 초기 메시지 전송 및 thread_ts 저장
-      const response = await say(`🌱 MVP 생성을 시작합니다: "${idea}"`);
+      const response = await say(`🌱 MVP 생성을 시작합니다.\n- 사용자 입력: ${idea}`);
       if (response.ts) {
         this.threadTimestamps.set(requestId, response.ts);
       }
