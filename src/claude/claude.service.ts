@@ -19,6 +19,16 @@ export class ClaudeService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
+  /**
+   * 단순 아이디어로 부터 MVP 생성
+   * 설계 단계를 거쳐 PLAN.md 파일을 생성한 후,
+   * 구현 단계로 진행
+   *
+   * @param idea 사용자 입력 프로젝트 아이디어
+   * @param channelId Slack Channel ID
+   * @param requestId Thread로 메시지를 남기기 위해 부여된 고유 ID
+   * @returns 배포된 URL과 프로젝트 경로
+   */
   async generateMVP(
     idea: string,
     channelId: string,
@@ -65,6 +75,11 @@ export class ClaudeService {
    * 마크다운 기획서 파일로부터 MVP 생성
    * 기획서에는 더 상세한 요구사항이 포함되어 있으므로 설계 단계를 건너뛰고
    * 바로 구현 단계로 진행
+   *
+   * @param specContent 입력된 기획서
+   * @param channelId Slack Channel ID
+   * @param requestId Thread로 메시지를 남기기 위해 부여된 고유 ID
+   * @returns 배포된 URL과 프로젝트 경로
    */
   async generateMVPFromSpec(
     specContent: string,
