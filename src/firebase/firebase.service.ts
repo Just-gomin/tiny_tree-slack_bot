@@ -13,7 +13,10 @@ export class FirebaseService {
     this.createFirebaseConfig(projectPath);
 
     // 2. Preview Channel 배포 및 URL 반환
-    const previewUrl = await this.runPreviewChannelDeploy(projectPath, channelId);
+    const previewUrl = await this.runPreviewChannelDeploy(
+      projectPath,
+      channelId,
+    );
 
     return previewUrl;
   }
@@ -81,12 +84,21 @@ export class FirebaseService {
         this.logger.log(`Firebase Preview Channel 배포 종료 (코드: ${code})`);
 
         if (code === 0) {
-          resolve(previewUrl || `Preview Channel ${channelId} 배포 완료`);
+          if (!previewUrl) {
+            this.logger.warn(
+              '배포는 성공했으나 Preview URL을 찾을 수 없습니다',
+            );
+            reject(
+              new Error('Firebase 배포 성공했으나 URL을 파싱할 수 없습니다'),
+            );
+          } else {
+            resolve(previewUrl);
+          }
         } else {
           reject(
             new Error(
               `Firebase Preview Channel 배포 실패 (종료 코드: ${code})\n\n` +
-              `에러: ${deployHandler.getErrorSummary()}`,
+                `에러: ${deployHandler.getErrorSummary()}`,
             ),
           );
         }
@@ -97,9 +109,9 @@ export class FirebaseService {
         reject(
           new Error(
             `Firebase 배포 프로세스 실행 실패: ${error.message}\n` +
-            `가능한 원인:\n` +
-            `- Firebase CLI가 설치되지 않음\n` +
-            `- Firebase 인증 실패`,
+              `가능한 원인:\n` +
+              `- Firebase CLI가 설치되지 않음\n` +
+              `- Firebase 인증 실패`,
           ),
         );
       });

@@ -17,7 +17,7 @@ export class ClaudeService {
   constructor(
     private readonly firebaseService: FirebaseService,
     private readonly eventEmitter: EventEmitter2,
-  ) { }
+  ) {}
 
   async generateMVP(
     idea: string,
@@ -171,10 +171,10 @@ export class ClaudeService {
         maxBufferLines: 500,
       });
 
-      claude.stdout.on('data', (data: Buffer<ArrayBufferLike>) =>
+      claude.stdout.on('data', (data: Buffer) =>
         streamHandler.handleStdout(data),
       );
-      claude.stderr.on('data', (data: Buffer<ArrayBufferLike>) =>
+      claude.stderr.on('data', (data: Buffer) =>
         streamHandler.handleStderr(data),
       );
 
@@ -187,7 +187,7 @@ export class ClaudeService {
           reject(
             new Error(
               `Claude Code 실행 실패 (종료 코드: ${code})\n\n` +
-              `최근 에러:\n${streamHandler.getErrorSummary()}`,
+                `최근 에러:\n${streamHandler.getErrorSummary()}`,
             ),
           );
         }
@@ -198,11 +198,11 @@ export class ClaudeService {
         reject(
           new Error(
             `Claude Code 프로세스 실행 실패: ${error.message}\n` +
-            `실행 경로: ${process.env.CLAUDE_CODE_PATH}\n` +
-            `가능한 원인:\n` +
-            `- Claude Code CLI가 해당 경로에 없음\n` +
-            `- 실행 권한 없음\n` +
-            `- Claude Code가 설치되지 않음`,
+              `실행 경로: ${process.env.CLAUDE_CODE_PATH}\n` +
+              `가능한 원인:\n` +
+              `- Claude Code CLI가 해당 경로에 없음\n` +
+              `- 실행 권한 없음\n` +
+              `- Claude Code가 설치되지 않음`,
           ),
         );
       });
@@ -319,10 +319,10 @@ ${projectPath}/PLAN.md와 ${projectPath}/SPEC.md를 참고하여 MVP를 구현�
         maxBufferLines: 300,
       });
 
-      flutter.stdout.on('data', (data: Buffer<ArrayBufferLike>) =>
+      flutter.stdout.on('data', (data: Buffer) =>
         streamHandler.handleStdout(data),
       );
-      flutter.stderr.on('data', (data: Buffer<ArrayBufferLike>) =>
+      flutter.stderr.on('data', (data: Buffer) =>
         streamHandler.handleStderr(data),
       );
 
@@ -335,7 +335,7 @@ ${projectPath}/PLAN.md와 ${projectPath}/SPEC.md를 참고하여 MVP를 구현�
           reject(
             new Error(
               `Flutter 빌드 실패 (종료 코드: ${code})\n\n` +
-              `최근 에러:\n${streamHandler.getErrorSummary()}`,
+                `최근 에러:\n${streamHandler.getErrorSummary()}`,
             ),
           );
         }
@@ -346,10 +346,10 @@ ${projectPath}/PLAN.md와 ${projectPath}/SPEC.md를 참고하여 MVP를 구현�
         reject(
           new Error(
             `Flutter 프로세스 실행 실패: ${error.message}\n` +
-            `가능한 원인:\n` +
-            `- Flutter SDK가 PATH에 없음\n` +
-            `- Flutter가 설치되지 않음\n` +
-            `- 프로젝트 경로가 올바르지 않음: ${projectPath}`,
+              `가능한 원인:\n` +
+              `- Flutter SDK가 PATH에 없음\n` +
+              `- Flutter가 설치되지 않음\n` +
+              `- 프로젝트 경로가 올바르지 않음: ${projectPath}`,
           ),
         );
       });

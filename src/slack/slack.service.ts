@@ -78,7 +78,9 @@ export class SlackService implements OnModuleInit {
       this.activeRequests.set(userId, true);
 
       // 초기 메시지 전송 및 thread_ts 저장
-      const response = await say(`🌱 MVP 생성을 시작합니다.\n- 사용자 입력: ${idea}`);
+      const response = await say(
+        `🌱 MVP 생성을 시작합니다.\n- 사용자 입력: ${idea}`,
+      );
       if (response.ts) {
         this.threadTimestamps.set(requestId, response.ts);
       }
@@ -192,18 +194,18 @@ export class SlackService implements OnModuleInit {
 
     const threadTs = this.threadTimestamps.get(requestId);
 
-    await withRetry(async () => {
-      const response = await this.app.client.chat.postMessage({
+    const response = await withRetry(async () => {
+      return await this.app.client.chat.postMessage({
         channel,
         text: message,
         thread_ts: threadTs,
       });
-
-      // 첫 메시지인 경우 (threadTs가 없었던 경우) thread_ts 저장
-      if (!threadTs && response.ts) {
-        this.threadTimestamps.set(requestId, response.ts);
-      }
     });
+
+    // 첫 메시지인 경우 (threadTs가 없었던 경우) thread_ts 저장
+    if (!threadTs && response.ts) {
+      this.threadTimestamps.set(requestId, response.ts);
+    }
   }
 
   // 상세한 진행 상황 전송 (스레드로)
