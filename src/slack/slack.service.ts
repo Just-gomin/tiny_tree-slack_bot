@@ -143,12 +143,25 @@ export class SlackService implements OnModuleInit {
           }
 
           const content = await this.downloadFile(file.file.url_private);
-          await this.claudeService.generateMVPFromSpec(
+          const result = await this.claudeService.generateMVPFromSpec(
             content,
             event.channel_id,
             requestId,
           );
+          await this.sendProgressToThread(
+            event.channel_id,
+            `✅ 배포 완료!\n🔗 ${result.deployUrl}`,
+            requestId,
+          );
         }
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        await this.sendProgressToThread(
+          event.channel_id,
+          `❌ 오류 발생: ${errorMessage}`,
+          requestId,
+        );
       } finally {
         this.activeRequests.delete(userId);
         this.cleanupThread(requestId);

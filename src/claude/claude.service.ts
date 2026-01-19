@@ -119,11 +119,6 @@ export class ClaudeService {
       projectName,
     );
 
-    this.eventEmitter.emit(
-      'progress.send',
-      new ProgressEvent(channelId, `✅ 배포 완료!\n🔗 ${deployUrl}`, requestId),
-    );
-
     return { deployUrl, projectPath };
   }
 
