@@ -91,9 +91,10 @@ export class SlackService implements OnModuleInit {
           command.channel_id,
           requestId,
         );
+        const projectName = result.projectPath.split('/').pop();
         await this.sendProgressToThread(
           command.channel_id,
-          `✅ 배포 완료!\n🔗 ${result.deployUrl}`,
+          `✅ 배포 완료!\n🔗 URL: ${result.deployUrl}\n📁 프로젝트: ${projectName}`,
           requestId,
         );
       } catch (error) {
@@ -148,9 +149,10 @@ export class SlackService implements OnModuleInit {
             event.channel_id,
             requestId,
           );
+          const projectName = result.projectPath.split('/').pop();
           await this.sendProgressToThread(
             event.channel_id,
-            `✅ 배포 완료!\n🔗 ${result.deployUrl}`,
+            `✅ 배포 완료!\n🔗 URL: ${result.deployUrl}\n📁 프로젝트: ${projectName}`,
             requestId,
           );
         }
