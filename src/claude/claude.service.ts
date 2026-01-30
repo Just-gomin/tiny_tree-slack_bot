@@ -20,14 +20,14 @@ export class ClaudeService {
   ) {}
 
   /**
-   * 단순 아이디어로 부터 MVP 생성
+   * 단순 아이디어로부터 MVP 생성
    * 설계 단계를 거쳐 PLAN.md 파일을 생성한 후,
    * 구현 단계로 진행
    *
    * @param idea 사용자 입력 프로젝트 아이디어
    * @param channelId Slack Channel ID
    * @param requestId Thread로 메시지를 남기기 위해 부여된 고유 ID
-   * @returns 배포된 URL과 프로젝트 경로
+   * @returns {Promise<MVPResult>} 배포된 URL과 프로젝트 경로
    */
   async generateMVP(
     idea: string,
@@ -79,7 +79,7 @@ export class ClaudeService {
    * @param specContent 입력된 기획서
    * @param channelId Slack Channel ID
    * @param requestId Thread로 메시지를 남기기 위해 부여된 고유 ID
-   * @returns 배포된 URL과 프로젝트 경로
+   * @returns {Promise<MVPResult>} 배포된 URL과 프로젝트 경로
    */
   async generateMVPFromSpec(
     specContent: string,
