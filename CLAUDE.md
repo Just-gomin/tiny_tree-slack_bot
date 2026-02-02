@@ -1,4 +1,4 @@
-# CLAUDE.md
+# CLAUDE.md - Tiny Tree Slack Bot
 
 ## Answering Request
 
@@ -6,235 +6,232 @@
 
 ## Project Overview
 
-- NestJS 11 기반 Slack Bot 프로젝트
-- TypeScript 5.7, ES modules (nodenext) 사용
-- Slack Bolt SDK 통합 예정
-- Jest 테스트 프레임워크
+NestJS 11 기반 Slack Bot으로 Tiny Tree의 사용자 인터페이스 역할을 합니다.  
+Socket Mode로 Slack과 연동하며, Claude Code CLI를 실행하여 MVP를 생성하고 Firebase에 배포합니다.
+
+**현재 Phase**: 2 (커맨드 시스템 재설계 및 프롬프트 고도화)
 
 ## Project Structure
 
-### 디렉토리 구조
-
-- `src/`: 소스 코드 디렉토리
-  - `*.module.ts`: NestJS 모듈 파일
-  - `*.controller.ts`: 컨트롤러 파일
-  - `*.service.ts`: 서비스 파일
-  - `*.spec.ts`: 단위 테스트 파일
-  - `main.ts`: 애플리케이션 진입점
-- `test/`: E2E 테스트 디렉토리
-  - `*.e2e-spec.ts`: E2E 테스트 파일
-  - `jest-e2e.json`: E2E Jest 설정
-- `dist/`: 빌드 출력 디렉토리 (git에서 제외됨)
-
-### 향후 Slack 모듈 구조 예시
-
 ```text
 src/
-├── app.module.ts          # 루트 모듈
-├── slack/                 # Slack 관련 기능
-│   ├── slack.module.ts    # Slack 모듈
-│   ├── events/            # 이벤트 핸들러
-│   ├── commands/          # 슬래시 커맨드
-│   └── services/          # Slack 관련 서비스
-└── config/                # 설정 모듈
-    └── config.module.ts
+├── slack/              # Slack 이벤트/커맨드 핸들링
+│   ├── commands/       # 커맨드 핸들러
+│   ├── events/         # 이벤트 핸들러
+│   └── utils/          # Slack 유틸리티
+├── claude/             # Claude 연동
+│   ├── api/            # Claude API 클라이언트
+│   ├── code/           # Claude Code CLI 실행
+│   └── prompts/        # 프롬프트 관리 (TypeScript)
+│       ├── index.ts                    # 공개 API
+│       ├── types.ts                    # 타입 정의
+│       ├── builder.ts                  # 프롬프트 조합
+│       ├── base/                       # 기본 프롬프트
+│       │   ├── system.prompt.ts
+│       │   └── constraints.prompt.ts
+│       ├── templates/                  # 모드별 템플릿
+│       │   ├── light-planning.prompt.ts
+│       │   ├── light-implementation.prompt.ts
+│       │   ├── full-planning.prompt.ts
+│       │   └── ...
+│       └── components/                 # 재사용 컴포넌트
+│           ├── flutter-best-practices.prompt.ts
+│           └── ...
+├── firebase/           # Firebase 배포
+├── project/            # 프로젝트 관리
+│   ├── complexity/     # 복잡도 계산
+│   └── lifecycle/      # 생명주기 관리
+└── common/             # 공통 유틸리티
 ```
 
-## NestJS Architecture
+## Key Decisions
 
-### 모듈 기반 구조
+### 1. 커맨드 체계
 
-- Slack 이벤트/명령어를 기능별 NestJS 모듈로 구조화
-- 각 기능은 독립적인 모듈로 분리
-- 모듈 간 의존성은 최소화
-- 공통 기능은 shared 모듈로 추출
+**계층적 구조 채택**:
 
-### 모듈 설계 원칙
+```text
+/tinytree new light     # 간단한 MVP
+/tinytree new full      # 복잡한 프로젝트
+/tinytree cancel        # 작업 중단
+/tinytree status        # 진행 상황
+```
 
-- **독립성**: 각 모듈은 독립적으로 동작 가능
-- **최소 의존성**: 모듈 간 의존성을 최소화하여 유지보수성 향상
-- **공통 기능 분리**: 여러 모듈에서 사용되는 기능은 shared 모듈로 분리
+**근거**: 확장성, 자동완성 친화적, 직관적
+
+### 2. 프롬프트 관리 방식
+
+**TypeScript로 `src/claude/prompts/`에 관리**
+
+**근거**:
+
+- ✅ 타입 안정성 (컴파일 타임 검증)
+- ✅ IDE 자동완성 및 리팩토링 지원
+- ✅ 템플릿 리터럴로 변수 치환 간편
+- ✅ 빌드 시 자동 포함 (파일 복사 불필요)
+- ✅ 런타임 파일 I/O 제거 (성능 향상)
+- ✅ 테스트 및 버전 관리 용이
+
+**Markdown 방식의 문제점**:
+
+- ❌ 런타임 파일 읽기 필요 (`fs.readFileSync`)
+- ❌ 템플릿 변수 치환 로직 별도 구현
+- ❌ TypeScript 타입 안정성 없음
+- ❌ IDE 자동완성 불가
+
+**구현 패턴**:
+
+```typescript
+// types.ts
+export interface PromptContext {
+  mode: 'light' | 'full';
+  idea: string;
+  features: string[];
+  complexity: ComplexityScore;
+}
+
+// templates/light-planning.prompt.ts
+export const lightPlanningPrompt = (ctx: PromptContext) => `
+당신은 Flutter Web 프로토타입을 30분 내에 생성합니다.
+아이디어: ${ctx.idea}
+기능: ${ctx.features.join(', ')}
+...
+`;
+
+// builder.ts
+export class PromptBuilder {
+  build(stage: PromptStage): string {
+    return [
+      systemPrompt,
+      globalConstraints,
+      this.getTemplate(stage),
+      components,
+    ].join('\n\n---\n\n');
+  }
+}
+
+// index.ts - 공개 API
+export function createPrompt(ctx: PromptContext, stage: PromptStage) {
+  return new PromptBuilder(ctx).build(stage);
+}
+```
+
+### 3. 복잡도 판단 기준
+
+```typescript
+score = features*2 + screens*1.5 + dataModels 
+        + externalAPIs*3 + stateComplexity
+        
+// score < 20 → light
+// score ≥ 20 → full
+```
+
+**근거**: 기능 수, 화면 수, 데이터 복잡도, API 연동을 종합적으로 고려
+
+### 4. light vs full 차별화
+
+| 측면 | light | full |
+| :------: | :-------: | :------: |
+| 타겟 | 프로토타입 | 실제 서비스 |
+| 시간 | 30분-1시간 | 2-4시간 |
+| 패키지 | 사용 안함 | app_core 활용 |
+| 계획서 | PLAN.md | PLAN + ARCHITECTURE + TASKS |
 
 ## Environment Variables
 
-### @nestjs/config 사용
+```env
+# Slack
+SLACK_APP_TOKEN=xapp-...      # Socket Mode
+SLACK_BOT_TOKEN=xoxb-...      # Bot Token
+SLACK_SIGNING_SECRET=...      # Signing Secret
 
-- `@nestjs/config` 패키지를 통한 환경 변수 관리
-- `.env` 파일 사용 (git에서 제외, `.env.example` 제공)
+# Claude
+ANTHROPIC_API_KEY=...         # API Key
+CLAUDE_CODE_PATH=...          # CLI 경로
 
-### 필수 환경 변수
+# Firebase
+FIREBASE_PROJECT_ID=...
+FIREBASE_TOKEN=...
 
-**Slack 관련:**
-
-- `SLACK_BOT_TOKEN`: Bot User OAuth Token
-- `SLACK_SIGNING_SECRET`: Signing Secret
-- `SLACK_APP_TOKEN`: App-Level Token (Socket Mode 사용 시)
-
-**애플리케이션:**
-
-- `PORT`: 서버 포트 (기본값: 3000)
-- `NODE_ENV`: 실행 환경 (development, production)
-
-### ConfigModule 설정 예시
-
-```typescript
-// config/config.module.ts
-import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-
-@Module({
-  imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-      envFilePath: '.env',
-    }),
-  ],
-})
-export class AppConfigModule {}
+# Project
+TINY_TREE_PATH=...            # App Template 경로
 ```
 
-## Bash commands
+## Bash Commands
 
 ### Development
 
-- `npm run start`: 프로덕션 모드로 애플리케이션 시작
-- `npm run start:dev`: watch 모드로 개발 서버 시작
-- `npm run start:debug`: 디버그 모드로 개발 서버 시작
-- `npm run start:prod`: 빌드된 애플리케이션 실행 (dist/main.js)
+```bash
+npm run start:dev      # watch 모드
+npm run start:debug    # 디버그 모드
+npm run build          # 빌드
+```
 
-### Build
+### Test & Quality
 
-- `npm run build`: 프로젝트 빌드 (dist/ 디렉토리에 출력)
-- `npm run typecheck`: TypeScript 타입 체크
+```bash
+npm test               # 단위 테스트
+npm run test:e2e       # E2E 테스트
+npm run lint           # ESLint
+npm run format         # Prettier
+```
 
-### Test Commands
+## Code Style
 
-- `npm test`: 단위 테스트 실행
-- `npm run test:watch`: watch 모드로 단위 테스트 실행
-- `npm run test:cov`: 코드 커버리지와 함께 테스트 실행
-- `npm run test:debug`: 디버그 모드로 테스트 실행
-- `npm run test:e2e`: E2E 테스트 실행
-
-### Code Quality
-
-- `npm run lint`: ESLint 실행 및 자동 수정
-- `npm run format`: Prettier로 코드 포맷팅
-
-## Code style
-
-### Module System
-
-- Use ES modules (import/export) syntax, not CommonJS (require)
-- Destructure imports when possible (eg. `import { foo } from 'bar'`)
-
-### Prettier Configuration
-
-- `singleQuote: true`: 작은따옴표 사용
-- `trailingComma: 'all'`: 가능한 모든 곳에 trailing comma 사용
-
-### TypeScript
-
-- Decorators 사용 (`experimentalDecorators: true`)
-- Strict null checks 활성화 (`strictNullChecks: true`)
-- ES2023 타겟
+- ES modules 사용 (import/export)
+- Single quotes
+- Trailing commas
+- NestJS Decorators 활용
+- TypeScript strict mode
 
 ## Testing
 
-### 단위 테스트 (Unit Tests)
-
-**파일 위치:** `src/**/*.spec.ts`
-
-**Jest 설정:**
-
-- `rootDir: "src"`
-- `testRegex: ".*\\.spec\\.ts$"`
-
-**테스트 구조:**
-
-```typescript
-import { Test, TestingModule } from '@nestjs/testing';
-import { ServiceName } from './service-name.service';
-
-describe('ServiceName', () => {
-  let service: ServiceName;
-
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [ServiceName],
-    }).compile();
-
-    service = module.get<ServiceName>(ServiceName);
-  });
-
-  it('should be defined', () => {
-    expect(service).toBeDefined();
-  });
-});
-```
-
-### E2E 테스트 (End-to-End Tests)
-
-**파일 위치:** `test/**/*.e2e-spec.ts`
-
-**특징:**
-
-- 전체 애플리케이션 통합 테스트
-- supertest를 사용한 HTTP 요청 테스트
-- 실제 애플리케이션 동작 검증
-
-### Slack API 모킹
-
-Slack 이벤트/명령어 테스트 시 실제 Slack API 호출 대신 모킹 사용:
-
-```typescript
-const mockSlackClient = {
-  chat: {
-    postMessage: jest.fn().mockResolvedValue({ ok: true }),
-  },
-};
-```
-
-### 테스트 실행 가이드
-
-- 단일 테스트 파일 실행: `npm test -- <파일명>`
-- watch 모드 사용 권장: `npm run test:watch`
-- 커버리지 확인: `npm run test:cov` (coverage/ 디렉토리에 리포트 생성)
-
-## Slack Bolt SDK Integration
-
-### 향후 통합 가이드라인
-
-**설치:**
-
-```bash
-npm install @slack/bolt
-```
-
-**NestJS 통합 패턴:**
-
-- Slack Bolt App을 NestJS Provider로 등록
-- SlackModule을 통한 중앙 집중식 관리
-- 이벤트/명령어 핸들러를 NestJS 서비스로 구현
-
-**디렉토리 구조 예시:**
-
-```text
-src/slack/
-├── slack.module.ts       # SlackModule
-├── slack.service.ts      # Slack Bolt App 래퍼
-├── events/
-│   └── message.event.ts  # 메시지 이벤트 핸들러
-└── commands/
-    └── hello.command.ts  # 슬래시 커맨드 핸들러
-```
-
-**Socket Mode vs HTTP Mode:**
-
-- **개발 환경**: Socket Mode 권장 (ngrok 불필요)
-- **프로덕션 환경**: HTTP Mode 권장 (확장성)
+- **단위 테스트**: `src/**/*.spec.ts`
+- **E2E 테스트**: `test/**/*.e2e-spec.ts`
+- Slack API는 모킹 사용
 
 ## Workflow
 
-- Be sure to typecheck when you're done making a series of code changes
-- Prefer running single tests, and not the whole test suite, for performance
-- Don't force to change the test code to pass the test.
+1. 코드 변경 후 `npm run typecheck`
+2. 단일 테스트 파일 실행 권장
+3. 테스트 통과를 위해 테스트 코드 강제 수정 금지
+
+## Important Notes
+
+### Phase 2 작업 시 주의사항
+
+1. **프롬프트 시스템 (TypeScript)**
+   - `src/claude/prompts/` 디렉토리 생성
+   - 타입 정의부터 시작 (`types.ts`)
+   - 템플릿 함수는 항상 `PromptContext`를 매개변수로
+   - 빌더 패턴으로 프롬프트 조합
+   - 단위 테스트 필수
+
+2. **복잡도 계산 로직**
+   - 사용자 입력에서 feature, screen 등 추출
+   - 계산 결과를 로그로 남김
+   - 경계 케이스 (score = 19, 20) 테스트
+
+3. **에러 처리**
+   - Claude Code 실행 실패 시 재시도 로직 (최대 3회)
+   - 사용자에게 명확한 에러 메시지
+   - 로그 파일 저장 (`/logs/[project_id]/`)
+
+4. **메모리 관리**
+   - GCP e2-micro는 1GB RAM
+   - 동시 실행 제한 (1개)
+   - 프롬프트 캐싱 (서버 시작 시 사전 로드)
+
+5. **테스트 전략**
+   - 프롬프트 빌더 단위 테스트
+   - 템플릿 변수 치환 검증
+   - 모드별 프롬프트 생성 E2E 테스트
+
+## Related Documents
+
+- [프로젝트 계획](./plans/project-plan.md)
+- [README.md](./README.md)
+
+## 관련 프로젝트
+
+- [Tiny Tree App Template](https://github.com/Just-gomin/tiny_tree-app_template)
