@@ -46,42 +46,156 @@ Slack을 통해 MVP 생성 요청을 받아 Claude Code CLI를 실행하고, Fir
 
 **기존**:
 
-```text
+``` bash
 /mvp [아이디어]
 ```
 
 **신규**:
 
-```text
+``` bash
 /tinytree new light [아이디어]  # 간단한 MVP (기능 <5)
 /tinytree new full [아이디어]   # 복잡한 프로젝트 (기능 ≥5)
 /tinytree cancel                # 작업 중단
 /tinytree status                # 진행 상황
-/tinytree rename <name>         # 이름 변경
+/tinytree rename <n>            # 이름 변경
 ```
 
-#### 2. 프롬프트 관리 시스템
+#### 2. 프롬프트 관리 시스템 (TypeScript)
 
 **디렉토리 구조**:
 
-```text
-prompts/
-├── base/                       # 기본 시스템 프롬프트
-│   ├── system.md              # Claude의 역할
-│   └── constraints.md         # 전역 제약사항
-├── modes/                      # 모드별 프롬프트
-│   ├── light/
-│   │   ├── planning.md
-│   │   └── implementation.md
-│   └── full/
-│       ├── planning.md
-│       ├── architecture.md
-│       ├── task_breakdown.md
-│       └── implementation.md
-└── components/                 # 재사용 프롬프트
-    ├── flutter_best_practices.md
-    ├── error_handling.md
-    └── testing_guidelines.md
+```typescript
+src/claude/prompts/
+├── index.ts                    // 공개 API
+├── types.ts                    // 타입 정의
+├── builder.ts                  // 프롬프트 조합 로직
+├── base/
+│   ├── system.prompt.ts        // Claude의 역할 정의
+│   └── constraints.prompt.ts   // 전역 제약사항
+├── templates/
+│   ├── light-planning.prompt.ts
+│   ├── light-implementation.prompt.ts
+│   ├── full-planning.prompt.ts
+│   ├── full-architecture.prompt.ts
+│   ├── full-task-breakdown.prompt.ts
+│   └── full-implementation.prompt.ts
+└── components/
+    ├── flutter-best-practices.prompt.ts
+    ├── error-handling.prompt.ts
+    └── testing-guidelines.prompt.ts
+```
+
+**TypeScript로 관리하는 이유**:
+
+- ✅ 타입 안정성 (컴파일 타임 검증)
+- ✅ IDE 자동완성 및 리팩토링 지원
+- ✅ 템플릿 리터럴로 변수 치환 간편
+- ✅ 빌드된 코드에 자동 포함 (별도 복사 불필요)
+- ✅ 테스트 및 버전 관리 용이
+- ✅ 런타임 파일 I/O 제거 (성능 향상)
+
+**구현 예시**:
+
+```typescript
+// src/claude/prompts/types.ts
+export interface PromptContext {
+  mode: 'light' | 'full';
+  idea: string;
+  features: string[];
+  complexity: {
+    score: number;
+    features: number;
+    screens: number;
+    dataModels: number;
+    externalAPIs: number;
+    stateComplexity: 'simple' | 'medium' | 'complex';
+  };
+}
+
+export type PromptStage = 
+  | 'planning' 
+  | 'architecture' 
+  | 'task_breakdown' 
+  | 'implementation';
+
+// src/claude/prompts/templates/light-planning.prompt.ts
+import { PromptContext } from '../types';
+
+export const lightPlanningPrompt = (context: PromptContext): string => `
+당신은 Flutter Web 전용 프로토타입을 30분 내에 생성합니다.
+
+사용자 아이디어: ${context.idea}
+
+기능 목록:
+${context.features.map(f => `- ${f}`).join('\n')}
+
+제약사항:
+- packages/ 폴더 사용 금지
+- 모든 코드는 lib/ 아래에 직접 작성
+- 상태 관리: setState만 사용
+- 화면 수: 최대 3개
+- 외부 패키지: http, shared_preferences만 허용
+...
+`;
+
+// src/claude/prompts/builder.ts
+import { PromptContext, PromptStage } from './types';
+import { systemPrompt } from './base/system.prompt';
+import { globalConstraints } from './base/constraints.prompt';
+import { lightPlanningPrompt } from './templates/light-planning.prompt';
+
+export class PromptBuilder {
+  constructor(private context: PromptContext) {}
+  
+  build(stage: PromptStage): string {
+    const parts = [
+      systemPrompt,
+      globalConstraints,
+      this.getTemplateForStage(stage),
+      flutterBestPractices,
+    ];
+    return parts.join('\n\n---\n\n');
+  }
+  
+  private getTemplateForStage(stage: PromptStage): string {
+    if (this.context.mode === 'light') {
+      return stage === 'planning' 
+        ? lightPlanningPrompt(this.context)
+        : lightImplementationPrompt(this.context);
+    } else {
+      // full 모드 처리
+    }
+  }
+}
+
+// src/claude/prompts/index.ts - 공개 API
+export { PromptBuilder } from './builder';
+export type { PromptContext, PromptStage } from './types';
+
+export function createPrompt(
+  context: PromptContext, 
+  stage: PromptStage
+): string {
+  const builder = new PromptBuilder(context);
+  return builder.build(stage);
+}
+
+// 사용 예시 (src/claude/claude.service.ts)
+import { createPrompt } from './prompts';
+
+async generatePlan(idea: string, mode: 'light' | 'full') {
+  const complexity = this.calculateComplexity(idea);
+  
+  const prompt = createPrompt({
+    mode,
+    idea,
+    features: this.extractFeatures(idea),
+    complexity,
+  }, 'planning');
+  
+  const response = await this.claudeApi.complete(prompt);
+  return response;
+}
 ```
 
 #### 3. 복잡도 판단 로직
@@ -121,13 +235,16 @@ function determineMode(score: number): 'light' | 'full' {
 - [ ] 스레드 커맨드 인프라 (`/tinytree cancel`, `/tinytree status` 등)
 - [ ] 복잡도 계산 로직 구현
 
-#### Week 3-4: 프롬프트 시스템 구축
+#### Week 3-4: 프롬프트 시스템 구축 (TypeScript)
 
-- [ ] `prompts/` 디렉토리 구조 생성
-- [ ] base 프롬프트 작성 (system.md, constraints.md)
-- [ ] light 모드 프롬프트 작성
-- [ ] full 모드 프롬프트 작성
-- [ ] 프롬프트 템플릿 엔진 구현
+- [ ] `src/claude/prompts/` 디렉토리 구조 생성
+- [ ] 타입 정의 (`types.ts`)
+- [ ] base 프롬프트 작성 (`system.prompt.ts`, `constraints.prompt.ts`)
+- [ ] light 모드 템플릿 작성
+- [ ] full 모드 템플릿 작성
+- [ ] 프롬프트 빌더 구현 (`builder.ts`)
+- [ ] 공개 API 구현 (`index.ts`)
+- [ ] 단위 테스트 작성
 
 #### Week 5-6: 통합 및 최적화
 
@@ -161,7 +278,7 @@ src/
 ├── claude/             # Claude 연동
 │   ├── api/            # Claude API 클라이언트
 │   ├── code/           # Claude Code CLI 실행
-│   └── prompts/        # 프롬프트 관리
+│   └── prompts/        # 프롬프트 관리 (TypeScript)
 ├── firebase/           # Firebase 배포
 │   ├── hosting/        # Hosting 배포
 │   └── config/         # Firebase 설정
@@ -181,7 +298,7 @@ src/
         ↓
 커맨드 파서 (복잡도 분석)
         ↓
-프롬프트 생성 (light 또는 full)
+프롬프트 생성 (PromptBuilder 사용)
         ↓
 Claude API (계획서 작성)
         ↓
@@ -258,5 +375,6 @@ npm run start:dev
 ## 변경 이력
 
 | 날짜 | 버전 | 변경 내용 |
-| :------: | :------: | :---------- |
-| 2025-02-02 | 1.0 | 프로젝트 계획서 작성 |
+| :------: | :------: | :----------: |
+| 2026-02-02 | 1.0 | 프로젝트 계획서 작성 |
+| 2026-02-02 | 1.1 | 프롬프트 관리 시스템을 TypeScript로 변경 |

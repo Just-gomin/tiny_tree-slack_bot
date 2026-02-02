@@ -22,17 +22,26 @@ src/
 ├── claude/             # Claude 연동
 │   ├── api/            # Claude API 클라이언트
 │   ├── code/           # Claude Code CLI 실행
-│   └── prompts/        # 프롬프트 관리
+│   └── prompts/        # 프롬프트 관리 (TypeScript)
+│       ├── index.ts                    # 공개 API
+│       ├── types.ts                    # 타입 정의
+│       ├── builder.ts                  # 프롬프트 조합
+│       ├── base/                       # 기본 프롬프트
+│       │   ├── system.prompt.ts
+│       │   └── constraints.prompt.ts
+│       ├── templates/                  # 모드별 템플릿
+│       │   ├── light-planning.prompt.ts
+│       │   ├── light-implementation.prompt.ts
+│       │   ├── full-planning.prompt.ts
+│       │   └── ...
+│       └── components/                 # 재사용 컴포넌트
+│           ├── flutter-best-practices.prompt.ts
+│           └── ...
 ├── firebase/           # Firebase 배포
 ├── project/            # 프로젝트 관리
 │   ├── complexity/     # 복잡도 계산
 │   └── lifecycle/      # 생명주기 관리
 └── common/             # 공통 유틸리티
-
-prompts/                # 프롬프트 템플릿
-├── base/               # 기본 시스템 프롬프트
-├── modes/              # light/full 모드별
-└── components/         # 재사용 가능한 조각
 ```
 
 ## Key Decisions
@@ -50,15 +59,62 @@ prompts/                # 프롬프트 템플릿
 
 **근거**: 확장성, 자동완성 친화적, 직관적
 
-### 2. 프롬프트 관리 위치
+### 2. 프롬프트 관리 방식
 
-**Slack Bot 리포지토리에 저장** (`prompts/` 디렉토리)
+**TypeScript로 `src/claude/prompts/`에 관리**
 
 **근거**:
 
-- 배포 간편
-- 버전 관리 용이
-- Slack Bot이 직접 접근 가능
+- ✅ 타입 안정성 (컴파일 타임 검증)
+- ✅ IDE 자동완성 및 리팩토링 지원
+- ✅ 템플릿 리터럴로 변수 치환 간편
+- ✅ 빌드 시 자동 포함 (파일 복사 불필요)
+- ✅ 런타임 파일 I/O 제거 (성능 향상)
+- ✅ 테스트 및 버전 관리 용이
+
+**Markdown 방식의 문제점**:
+
+- ❌ 런타임 파일 읽기 필요 (`fs.readFileSync`)
+- ❌ 템플릿 변수 치환 로직 별도 구현
+- ❌ TypeScript 타입 안정성 없음
+- ❌ IDE 자동완성 불가
+
+**구현 패턴**:
+
+```typescript
+// types.ts
+export interface PromptContext {
+  mode: 'light' | 'full';
+  idea: string;
+  features: string[];
+  complexity: ComplexityScore;
+}
+
+// templates/light-planning.prompt.ts
+export const lightPlanningPrompt = (ctx: PromptContext) => `
+당신은 Flutter Web 프로토타입을 30분 내에 생성합니다.
+아이디어: ${ctx.idea}
+기능: ${ctx.features.join(', ')}
+...
+`;
+
+// builder.ts
+export class PromptBuilder {
+  build(stage: PromptStage): string {
+    return [
+      systemPrompt,
+      globalConstraints,
+      this.getTemplate(stage),
+      components,
+    ].join('\n\n---\n\n');
+  }
+}
+
+// index.ts - 공개 API
+export function createPrompt(ctx: PromptContext, stage: PromptStage) {
+  return new PromptBuilder(ctx).build(stage);
+}
+```
 
 ### 3. 복잡도 판단 기준
 
@@ -75,7 +131,7 @@ score = features*2 + screens*1.5 + dataModels
 ### 4. light vs full 차별화
 
 | 측면 | light | full |
-| :------: | :------: | :------: |
+| :------: | :-------: | :------: |
 | 타겟 | 프로토타입 | 실제 서비스 |
 | 시간 | 30분-1시간 | 2-4시간 |
 | 패키지 | 사용 안함 | app_core 활용 |
@@ -144,26 +200,32 @@ npm run format         # Prettier
 
 ### Phase 2 작업 시 주의사항
 
-1. **프롬프트 템플릿 작성**
-   - base 프롬프트부터 작성
-   - light/full 차별화 명확히
-   - 구체적인 제약사항 명시
-   - 예제 포함
+1. **프롬프트 시스템 (TypeScript)**
+   - `src/claude/prompts/` 디렉토리 생성
+   - 타입 정의부터 시작 (`types.ts`)
+   - 템플릿 함수는 항상 `PromptContext`를 매개변수로
+   - 빌더 패턴으로 프롬프트 조합
+   - 단위 테스트 필수
 
 2. **복잡도 계산 로직**
    - 사용자 입력에서 feature, screen 등 추출
    - 계산 결과를 로그로 남김
-   - 경계 케이스 (score = 19, 20) 주의
+   - 경계 케이스 (score = 19, 20) 테스트
 
 3. **에러 처리**
-   - Claude Code 실행 실패 시 재시도 로직
+   - Claude Code 실행 실패 시 재시도 로직 (최대 3회)
    - 사용자에게 명확한 에러 메시지
-   - 로그 파일 저장
+   - 로그 파일 저장 (`/logs/[project_id]/`)
 
 4. **메모리 관리**
    - GCP e2-micro는 1GB RAM
-   - 동시 실행 제한
-   - 큰 파일 스트리밍 처리
+   - 동시 실행 제한 (1개)
+   - 프롬프트 캐싱 (서버 시작 시 사전 로드)
+
+5. **테스트 전략**
+   - 프롬프트 빌더 단위 테스트
+   - 템플릿 변수 치환 검증
+   - 모드별 프롬프트 생성 E2E 테스트
 
 ## Related Documents
 
