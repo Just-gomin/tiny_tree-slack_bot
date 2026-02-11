@@ -7,6 +7,7 @@ import { SlackModule } from './slack/slack.module';
 import { ClaudeModule } from './claude/claude.module';
 import { FirebaseModule } from './firebase/firebase.module';
 import { CommonModule } from './common/common.module';
+import { ProjectModule } from './project/project.module';
 import { validate } from './config/env.validation';
 
 @Module({
@@ -21,6 +22,7 @@ import { validate } from './config/env.validation';
     ClaudeModule,
     FirebaseModule,
     CommonModule,
+    ProjectModule,
   ],
   controllers: [AppController],
   providers: [AppService],
